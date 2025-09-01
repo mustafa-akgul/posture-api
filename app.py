@@ -1,6 +1,6 @@
 import pandas as pd
-from fastapi import FastAPI
-from tensorflow import tf
+import fastapi as FastAPI
+import tensorflow as tf
 import numpy as np
 from Posture_Model.cnn_lstm_hybrid_model import cnn_lstm_pipeline
 app = FastAPI()
