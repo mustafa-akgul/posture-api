@@ -2,9 +2,9 @@ import pandas as pd
 import fastapi as FastAPI
 import tensorflow as tf
 import numpy as np
-from Posture_Model.cnn_lstm_hybrid_model import cnn_lstm_pipeline
+from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 app = FastAPI()
-pipeline = cnn_lstm_pipeline.CNNLSTMPipeline()
+pipeline = CNNLSTMPipeline()
 pipeline.load_pipeline("cnn_lstm_model.h5")
 
 @app.post("/predict")

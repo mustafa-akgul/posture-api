@@ -4,3 +4,6 @@ numpy
 pandas
 tensorflow
 scikit-learn
+pickle
+os
+keras
