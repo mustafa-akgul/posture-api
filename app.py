@@ -1,8 +1,9 @@
 import pandas as pd
-import fastapi as FastAPI
+from fastapi import FastAPI
 import tensorflow as tf
 import numpy as np
-from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
+from .cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
+
 app = FastAPI()
 pipeline = CNNLSTMPipeline()
 pipeline.load_pipeline("cnn_lstm_model.h5")
