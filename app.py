@@ -2,7 +2,7 @@ import pandas as pd
 from fastapi import FastAPI
 import tensorflow as tf
 import numpy as np
-from .cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
+from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 
 app = FastAPI()
 pipeline = CNNLSTMPipeline()
