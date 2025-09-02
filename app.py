@@ -6,7 +6,7 @@ from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 
 app = FastAPI()
 pipeline = CNNLSTMPipeline()
-pipeline.load_pipeline("cnn_lstm_model.h5")
+pipeline.load_pipeline("pipeline.pkl")
 
 @app.post("/predict")
 def predict(data: list):
