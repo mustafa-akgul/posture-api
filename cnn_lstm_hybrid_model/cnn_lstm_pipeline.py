@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.preprocessing import LabelEncoder
-from cnn_lstm_model import build_cnn_lstm_model
+from cnn_lstm_model_setup import build_cnn_lstm_model
 import os
 import tensorflow as tf
 import pickle
