@@ -119,7 +119,7 @@ class CNNLSTMPipeline:
         y_pred = np.argmax(self.model.predict(X), axis=1)
         return self.label_encoder.inverse_transform(y_pred)
 
-    def save_pipeline(self, filepath="pipeline"):
+    def save_pipeline(self, filepath="pipeline.pkl"):
         if self.model is None:
             raise ValueError("Model henüz eğitilmedi. Lütfen kaydetmeden önce modeli fit edin.")
         
@@ -133,15 +133,14 @@ class CNNLSTMPipeline:
             "model_path": model_path
         }
         
-        pickle_path = f"{filepath}.pkl"
+        pickle_path = f"{filepath}"
         joblib.dump(pipeline_data, pickle_path)
         
         print(f"Model '{model_path}' dosyasına kaydedildi.")
         print(f"Pipeline '{pickle_path}' dosyasına kaydedildi.")
 
     def load_pipeline(self, filepath="pipeline"):
-        """Pipeline'ı ve modeli yükler."""
-        pickle_path = f"{filepath}.pkl"
+        pickle_path = f"{filepath}"
         
         if not os.path.exists(pickle_path):
             raise FileNotFoundError(f"'{pickle_path}' dosyası bulunamadı.")
