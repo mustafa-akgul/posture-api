@@ -1,13 +1,10 @@
 import pandas as pd
 from cnn_lstm_pipeline import CNNLSTMPipeline
 
-# Veriyi yükle
 df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset.csv")
 
-# Pipeline oluştur ve eğit
 pipeline = CNNLSTMPipeline(window_size=20, stride=1)
 pipeline.fit(df, epochs=30, batch_size=32)
 
-# Pipeline'ı kaydet
 pipeline.save_pipeline("pipeline.pkl")
 print("Model eğitimi tamamlandı!")
