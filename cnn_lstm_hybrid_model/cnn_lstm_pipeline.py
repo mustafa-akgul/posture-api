@@ -8,7 +8,7 @@ from collections import deque
 
 
 def get_raw_windows(df, window_size, stride):
-    """Dataframe'den sliding window ile veri pencerelerini çıkarır."""
+
     windows = []
     labels = []
     has_label = 'label' in df.columns
@@ -27,18 +27,17 @@ def get_raw_windows(df, window_size, stride):
 
 
 def build_cnn_lstm_model(window_size, n_features, n_classes):
-    """CNN-LSTM hibrit model oluşturur."""
     model = models.Sequential([
-        # CNN katmanları
+        # CNN 
         layers.Conv1D(32, 3, activation='relu', input_shape=(window_size, n_features)),
         layers.MaxPooling1D(2),
         layers.Conv1D(64, 3, activation='relu'),
         layers.MaxPooling1D(2),
         
-        # LSTM katmanı
+        # LSTM 
         layers.LSTM(64, return_sequences=False),
         
-        # Dense katmanları
+        # Dense 
         layers.Dense(32, activation='relu'),
         layers.Dropout(0.3),
         layers.Dense(n_classes, activation='softmax')
@@ -54,7 +53,6 @@ def build_cnn_lstm_model(window_size, n_features, n_classes):
 
 
 class CNNLSTMPipeline:
-    """CNN-LSTM modeli ile sensör verisi sınıflandırma pipeline'ı."""
     
     def __init__(self, window_size=20, stride=1):
         self.window_size = window_size
@@ -64,7 +62,6 @@ class CNNLSTMPipeline:
         self.data_buffer = deque(maxlen=window_size)
 
     def prepare_data(self, df, fit_encoder=False):
-        """Veriyi model için hazırlar."""
         X, y = get_raw_windows(df, self.window_size, self.stride)
         
         if y is not None:
@@ -77,7 +74,6 @@ class CNNLSTMPipeline:
             return X, None
 
     def fit(self, df, epochs=20, batch_size=32):
-        """Modeli eğitir."""
         X, y = self.prepare_data(df, fit_encoder=True)
         n_classes = len(np.unique(y))
         
@@ -94,10 +90,7 @@ class CNNLSTMPipeline:
         return history
 
     def add_data_point(self, x, y, z):
-        """
-        Gerçek zamanlı tahmin için tek bir veri noktası ekler.
-        Buffer dolunca tahmin yapar.
-        """
+
         self.data_buffer.append([x, y, z])
         
         if len(self.data_buffer) == self.window_size:
@@ -107,7 +100,6 @@ class CNNLSTMPipeline:
             return None, None
         
     def predict_current(self):
-        """Buffer'daki mevcut pencere için tahmin yapar."""
         if len(self.data_buffer) < self.window_size:
             raise ValueError(f"Buffer'da yeterli veri yok. Gerekli: {self.window_size}, Mevcut: {len(self.data_buffer)}")
         
@@ -123,21 +115,17 @@ class CNNLSTMPipeline:
         return predicted_label, confidence
 
     def predict_batch(self, df):
-        """Toplu veri için tahmin yapar."""
         X, _ = get_raw_windows(df, self.window_size, self.stride)
         y_pred = np.argmax(self.model.predict(X), axis=1)
         return self.label_encoder.inverse_transform(y_pred)
 
     def save_pipeline(self, filepath="pipeline"):
-        """Pipeline'ı ve modeli kaydeder."""
         if self.model is None:
             raise ValueError("Model henüz eğitilmedi. Lütfen kaydetmeden önce modeli fit edin.")
         
-        # Model'i Keras formatında kaydet
         model_path = f"{filepath}_model.keras"
         self.model.save(model_path)
         
-        # Diğer pipeline bileşenlerini joblib ile kaydet
         pipeline_data = {
             "label_encoder": self.label_encoder,
             "window_size": self.window_size,
@@ -160,7 +148,6 @@ class CNNLSTMPipeline:
         
         pipeline_data = joblib.load(pickle_path)
         
-        # Model'i yükle
         model_path = pipeline_data["model_path"]
         if not os.path.exists(model_path):
             raise FileNotFoundError(f"Model dosyası '{model_path}' bulunamadı.")
