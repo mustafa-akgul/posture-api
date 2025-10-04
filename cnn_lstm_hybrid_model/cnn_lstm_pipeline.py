@@ -8,7 +8,6 @@ from collections import deque
 
 
 def get_raw_windows(df, window_size, stride):
-
     windows = []
     labels = []
     has_label = 'label' in df.columns
@@ -28,16 +27,11 @@ def get_raw_windows(df, window_size, stride):
 
 def build_cnn_lstm_model(window_size, n_features, n_classes):
     model = models.Sequential([
-        # CNN 
         layers.Conv1D(32, 3, activation='relu', input_shape=(window_size, n_features)),
         layers.MaxPooling1D(2),
         layers.Conv1D(64, 3, activation='relu'),
         layers.MaxPooling1D(2),
-        
-        # LSTM 
         layers.LSTM(64, return_sequences=False),
-        
-        # Dense 
         layers.Dense(32, activation='relu'),
         layers.Dropout(0.3),
         layers.Dense(n_classes, activation='softmax')
@@ -90,7 +84,6 @@ class CNNLSTMPipeline:
         return history
 
     def add_data_point(self, x, y, z):
-
         self.data_buffer.append([x, y, z])
         
         if len(self.data_buffer) == self.window_size:
@@ -119,7 +112,7 @@ class CNNLSTMPipeline:
         y_pred = np.argmax(self.model.predict(X), axis=1)
         return self.label_encoder.inverse_transform(y_pred)
 
-    def save_pipeline(self, filepath="pipeline.pkl"):
+    def save_pipeline(self, filepath="pipeline"):
         if self.model is None:
             raise ValueError("Model henüz eğitilmedi. Lütfen kaydetmeden önce modeli fit edin.")
         
@@ -133,14 +126,14 @@ class CNNLSTMPipeline:
             "model_path": model_path
         }
         
-        pickle_path = f"{filepath}"
+        pickle_path = f"{filepath}.pkl"
         joblib.dump(pipeline_data, pickle_path)
         
         print(f"Model '{model_path}' dosyasına kaydedildi.")
         print(f"Pipeline '{pickle_path}' dosyasına kaydedildi.")
 
     def load_pipeline(self, filepath="pipeline"):
-        pickle_path = f"{filepath}"
+        pickle_path = f"{filepath}.pkl"
         
         if not os.path.exists(pickle_path):
             raise FileNotFoundError(f"'{pickle_path}' dosyası bulunamadı.")
@@ -160,6 +153,5 @@ class CNNLSTMPipeline:
         print(f"Pipeline '{pickle_path}' dosyasından yüklendi.")
 
     def reset_buffer(self):
-        """Veri buffer'ını temizler."""
         self.data_buffer.clear()
         print("Buffer temizlendi.")

@@ -15,7 +15,7 @@ app = FastAPI(title="Posture Predictor API")
 
 
 pipeline = CNNLSTMPipeline()
-pipeline.load_pipeline("pipeline.pkl")
+pipeline.load_pipeline("pipeline")
 
 @app.get("/")
 def root():
