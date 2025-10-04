@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import pandas as pd
-from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipelineimport
+from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 import uvicorn
 
 
