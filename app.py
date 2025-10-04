@@ -4,15 +4,15 @@ import pandas as pd
 from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 import uvicorn
 
-
 class SensorData(BaseModel):
     x: float
     y: float
     z: float
 
+class ResetRequest(BaseModel):
+    user_id: str = "default"  # İsteğe bağlı
 
 app = FastAPI(title="Posture Predictor API")
-
 
 pipeline = CNNLSTMPipeline()
 try:
@@ -26,7 +26,6 @@ except Exception as e:
     pipeline.save_pipeline("pipeline")
     print("Model eğitildi ve kaydedildi")
 
-
 @app.get("/")
 def root():
     return {"status": "running", "message": "Posture Predictor API aktif"}
@@ -37,13 +36,11 @@ def predict(data: SensorData):
     try:
         posture, confidence = pipeline.add_data_point(data.x, data.y, data.z)
         
-        
         if posture is None:
             return {
                 "status": "collecting",
                 "message": f"Veri toplanıyor... ({len(pipeline.data_buffer)}/{pipeline.window_size})"
             }
-        
         
         return {
             "status": "ok",
@@ -51,5 +48,19 @@ def predict(data: SensorData):
             "confidence": confidence
         }
     
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ✅ YENİ: RESET ENDPOINT'İ
+@app.post("/reset")
+def reset_buffer(request: ResetRequest = None):
+    """Buffer'ı sıfırla"""
+    try:
+        pipeline.data_buffer.clear()
+        return {
+            "status": "success", 
+            "message": "Buffer sıfırlandı",
+            "buffer_size": len(pipeline.data_buffer)
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
