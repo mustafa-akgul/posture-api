@@ -14,7 +14,7 @@ class SensorData(BaseModel):
 app = FastAPI(title="Posture Predictor API")
 
 
-pipeline = CNNLSTMPipelineimport()
+pipeline = CNNLSTMPipeline()
 pipeline.load_pipeline("pipeline.pkl")
 
 @app.get("/")
