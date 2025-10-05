@@ -27,8 +27,12 @@ except Exception as e:
     print("✅ Model eğitildi ve kaydedildi")
 
 # Sliding window buffer (API seviyesinde)
-WINDOW_SIZE = 20
+WINDOW_SIZE = 15  # 20'den 15'e düşürdük (daha hızlı tepki)
 data_buffer = deque(maxlen=WINDOW_SIZE)
+
+# Ağırlıklar: Son verilere daha fazla önem
+# İlk veri: 0.7x, Son veri: 1.3x
+TEMPORAL_WEIGHTS = np.linspace(0.7, 1.3, WINDOW_SIZE).reshape(-1, 1)
 
 @app.get("/")
 def root():
