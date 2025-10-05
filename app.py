@@ -38,23 +38,29 @@ def root():
 
 @app.post("/predict")
 def predict(data: SensorData):
-    """Gerçek zamanlı ağırlıklı tahmin"""
+    """Gerçek zamanlı tahmin - hızlı tepkili"""
     try:
         posture, confidence, all_predictions = pipeline.add_data_point(data.x, data.y, data.z)
+        
+        current_size = len(pipeline.data_buffer)
         
         if posture is None:
             return {
                 "status": "collecting",
-                "message": f"Kalibrasyon ({len(pipeline.data_buffer)}/{pipeline.window_size})",
-                "buffer_size": len(pipeline.data_buffer)
+                "message": f"Kalibrasyon ({current_size}/{pipeline.window_size})",
+                "buffer_size": current_size
             }
+        
+        # Kısmi mi tam mı tahmin?
+        prediction_type = "partial" if current_size < pipeline.window_size else "full"
         
         return {
             "status": "ok",
             "posture": posture,
-            "confidence": confidence,
-            "all_predictions": all_predictions,
-            "prediction_type": "temporal_weighted_smoothed"
+            "confidence": round(confidence, 3),
+            "buffer_size": current_size,
+            "prediction_type": prediction_type,
+            "all_predictions": all_predictions
         }
         
     except Exception as e:
