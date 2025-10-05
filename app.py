@@ -74,11 +74,21 @@ def predict(data: SensorData):
         # Label'a çevir
         posture = pipeline.label_encoder.inverse_transform([predicted_class])[0]
         
+        # Debug: Tüm sınıfların olasılıklarını göster
+        all_predictions = {
+            pipeline.label_encoder.inverse_transform([i])[0]: round(float(prediction[0][i]), 3)
+            for i in range(len(prediction[0]))
+        }
+        
+        print(f"📊 Tahmin Dağılımı: {all_predictions}")
+        print(f"📍 Buffer son 3 veri: {list(data_buffer)[-3:]}")
+        
         return {
             "status": "ok",
             "posture": posture,
             "confidence": round(confidence, 3),
-            "buffer_size": current_size
+            "buffer_size": current_size,
+            "all_predictions": all_predictions  # Debug için
         }
         
     except Exception as e:
