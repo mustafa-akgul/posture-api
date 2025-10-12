@@ -54,15 +54,16 @@ pipeline = CNNLSTMPipeline(window_size=15, use_weighted_window=True)
 try:
     pipeline.load_pipeline("pipeline")
     print("✅ Model yüklendi")
-except Exception as e:
-    print(f"Model yüklenemedi: {e}")
-    print("Yeniden eğitiliyor...")
-    print(f"⚠️ Model yüklenemedi: {e}")
+except FileNotFoundError:
+    print("⚠️ Model dosyası bulunamadı. Yeniden eğitiliyor...")
     df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset.csv")
     pipeline.fit(df, epochs=30, batch_size=32)
     pipeline.save_pipeline("pipeline")
-    print("Model eğitildi ve kaydedildi")
-    print("✅ Model eğitildi")
+    print("✅ Model eğitildi ve kaydedildi")
+except Exception as e:
+    print(f"❌ Model yüklenemedi: {e}")
+    raise
+
 
 
 @app.get("/")
