@@ -51,18 +51,18 @@ from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 
 pipeline = CNNLSTMPipeline(window_size=15, use_weighted_window=True)
 
-try:
+try : 
     pipeline.load_pipeline("pipeline")
     print("✅ Model yüklendi")
-except FileNotFoundError:
-    print("⚠️ Model dosyası bulunamadı. Yeniden eğitiliyor...")
-    df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset.csv")
+except Exception as e:
+    if not os.path.exists("cnn_lstm_hybrid_model/datasets/new_dataset.csv"):
+        raise RuntimeError("Dataset dosyası bulunamadı. Model eğitilemedi.")
+    print(f"⚠️ Model yüklenemedi: {e}")
+    print("Yeniden eğitiliyor...")
+    df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset_y.csv")
     pipeline.fit(df, epochs=30, batch_size=32)
     pipeline.save_pipeline("pipeline")
     print("✅ Model eğitildi ve kaydedildi")
-except Exception as e:
-    print(f"❌ Model yüklenemedi: {e}")
-    raise
 
 
 
