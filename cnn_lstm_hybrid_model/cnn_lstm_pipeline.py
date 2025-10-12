@@ -49,21 +49,29 @@ def build_cnn_lstm_model(window_size, n_features, n_classes):
 
 class CNNLSTMPipeline:
     
-    def __init__(self, window_size=15, stride=1):
+    def __init__(self, window_size=15, stride=1, use_weighted_window=True):
         self.window_size = window_size
         self.stride = stride
         self.model = None
         self.label_encoder = LabelEncoder()
         self.data_buffer = deque(maxlen=window_size)
         
-        # Adaptive smoothing için parametreler
+        # Weighted window için ağırlıklar
+        self.use_weighted_window = use_weighted_window
+        if use_weighted_window:
+            self.window_weights = np.exp(np.linspace(-2, 0, window_size))
+            self.window_weights = self.window_weights / self.window_weights.sum()
+        else:
+            self.window_weights = np.ones(window_size) / window_size
+        
+        # Adaptive smoothing
         self.prediction_history = deque(maxlen=3)
         self.smoothing_factor = 0.7
         
-        # YENİ: Değişim tespiti için
+        # Değişim tespiti
         self.last_prediction = None
-        self.stable_count = 0  # Aynı tahmin kaç kez üst üste geldi
-        self.transition_threshold = 0.3  # Geçiş için güven eşiği
+        self.stable_count = 0
+        self.change_detected_count = 0
         
     def prepare_data(self, df, fit_encoder=False):
         X, y = get_raw_windows(df, self.window_size, self.stride)
@@ -93,60 +101,110 @@ class CNNLSTMPipeline:
         
         return history
 
-    def detect_posture_change(self):
-        """Buffer'daki veri değişimini tespit et"""
+    def detect_strong_change(self):
+        """Güçlü duruş değişimini tespit et"""
         if len(self.data_buffer) < self.window_size:
             return False
         
         buffer_array = np.array(self.data_buffer)
         
-        # İlk ve son %30'luk kısımları karşılaştır
-        split_point = int(self.window_size * 0.3)
+        # Son %40 vs İlk %40
+        segment_size = int(self.window_size * 0.4)
         
-        first_segment = buffer_array[:split_point]
-        last_segment = buffer_array[-split_point:]
+        first_segment = buffer_array[:segment_size]
+        last_segment = buffer_array[-segment_size:]
         
-        # Ortalama ve varyans değişimi
+        # Ortalama değişim
         mean_change = np.linalg.norm(
             np.mean(last_segment, axis=0) - np.mean(first_segment, axis=0)
         )
         
-        # Threshold: 0.4g'den fazla değişim (deneysel olarak ayarlanabilir)
-        return mean_change > 0.4
+        # Varyans değişimi
+        var_change = np.linalg.norm(
+            np.var(last_segment, axis=0) - np.var(first_segment, axis=0)
+        )
+        
+        # Threshold
+        change_detected = (mean_change > 0.3) or (var_change > 0.15)
+        
+        if change_detected:
+            self.change_detected_count += 1
+        else:
+            self.change_detected_count = max(0, self.change_detected_count - 1)
+        
+        return self.change_detected_count >= 2
+
+    def predict_with_weighted_window(self, window_data):
+        """Ağırlıklı pencere ile tahmin"""
+        if not self.use_weighted_window:
+            return self.model.predict(window_data, verbose=0)[0]
+        
+        predictions = []
+        weights = []
+        
+        # 1. Tam pencere (ağırlık: 0.3)
+        pred_full = self.model.predict(window_data, verbose=0)[0]
+        predictions.append(pred_full)
+        weights.append(0.3)
+        
+        # 2. Son 10 veri (ağırlık: 0.5)
+        if len(self.data_buffer) >= 10:
+            recent_window = np.array(list(self.data_buffer)[-10:])
+            padded = np.pad(recent_window, ((self.window_size - 10, 0), (0, 0)), 
+                          mode='edge')
+            pred_recent = self.model.predict(padded.reshape(1, self.window_size, 3), 
+                                            verbose=0)[0]
+            predictions.append(pred_recent)
+            weights.append(0.5)
+        
+        # 3. Son 5 veri (ağırlık: 0.2)
+        if len(self.data_buffer) >= 5:
+            latest_window = np.array(list(self.data_buffer)[-5:])
+            padded = np.pad(latest_window, ((self.window_size - 5, 0), (0, 0)), 
+                          mode='edge')
+            pred_latest = self.model.predict(padded.reshape(1, self.window_size, 3), 
+                                            verbose=0)[0]
+            predictions.append(pred_latest)
+            weights.append(0.2)
+        
+        # Ağırlıklı ortalama
+        weights = np.array(weights)
+        weights = weights / weights.sum()
+        
+        weighted_pred = np.zeros_like(predictions[0])
+        for pred, w in zip(predictions, weights):
+            weighted_pred += pred * w
+        
+        return weighted_pred
 
     def predict_full(self):
-        """Tam pencere ile tahmin yap - iyileştirilmiş"""
+        """Tam pencere ile tahmin yap"""
         window_data = np.array(self.data_buffer)
         window_data = window_data.reshape(1, self.window_size, 3)
 
-        # Ham tahmin
-        raw_prediction = self.model.predict(window_data, verbose=0)[0]
+        # Weighted window prediction
+        raw_prediction = self.predict_with_weighted_window(window_data)
         
-        # Değişim var mı kontrol et
-        posture_change_detected = self.detect_posture_change()
+        # Güçlü değişim var mı?
+        strong_change = self.detect_strong_change()
         
-        if posture_change_detected:
-            # Değişim algılandı - smoothing'i azalt, yeni duruma hızlı geç
-            effective_smoothing = 0.9  # %90 yeni veri
-            # Tarihçeyi temizle
+        if strong_change:
+            effective_smoothing = 0.95
             self.prediction_history.clear()
             smoothed = raw_prediction
+            print(f"🔥 GÜÇLÜ DEĞİŞİM TESPİT EDİLDİ!")
         else:
-            # Normal smoothing
             effective_smoothing = self.smoothing_factor
             
             if len(self.prediction_history) > 0:
-                # Exponential moving average
                 last_pred = self.prediction_history[-1]
                 smoothed = (effective_smoothing * raw_prediction + 
                            (1 - effective_smoothing) * last_pred)
             else:
                 smoothed = raw_prediction
         
-        # Tahmin geçmişine ekle
         self.prediction_history.append(smoothed.copy())
         
-        # Final tahmin
         predicted_class = np.argmax(smoothed)
         confidence = float(np.max(smoothed))
         
@@ -154,15 +212,18 @@ class CNNLSTMPipeline:
         if self.last_prediction == predicted_class:
             self.stable_count += 1
         else:
-            self.stable_count = 1
+            if confidence > 0.65 or strong_change:
+                self.stable_count = 1
+                print(f"⚡ Yüksek güvenle geçiş: {confidence:.2f}")
+            else:
+                self.stable_count = 0
         
         self.last_prediction = predicted_class
         
-        # Eğer yeni tahmin çok güçlü ise (%60+ güven) hemen geç
-        if confidence > 0.6 or self.stable_count >= 2:
+        # Tahmin kararı
+        if confidence > 0.65 or self.stable_count >= 2:
             posture = self.label_encoder.inverse_transform([predicted_class])[0]
         else:
-            # Güven düşükse bir önceki tahminde kal (flicker önleme)
             if self.last_prediction is not None:
                 posture = self.label_encoder.inverse_transform([self.last_prediction])[0]
             else:
@@ -176,7 +237,7 @@ class CNNLSTMPipeline:
         return posture, confidence, all_predictions
 
     def add_data_point(self, x, y, z):
-        """Tek veri noktası ekle - iyileştirilmiş"""
+        """Tek veri noktası ekle"""
         self.data_buffer.append([x, y, z])
         current_size = len(self.data_buffer)
         
@@ -192,30 +253,38 @@ class CNNLSTMPipeline:
         return self.label_encoder.inverse_transform(y_pred)
 
     def set_smoothing_factor(self, factor: float):
-        """Yumuşatma faktörünü ayarla (0.0 = çok smooth, 1.0 = çok reaktif)"""
+        """Yumuşatma faktörünü ayarla"""
         self.smoothing_factor = max(0.0, min(1.0, factor))
 
-    def set_transition_threshold(self, threshold: float):
-        """Geçiş eşiğini ayarla"""
-        self.transition_threshold = max(0.0, min(1.0, threshold))
+    def set_weighted_window(self, enabled: bool):
+        """Weighted window'u aç/kapat"""
+        self.use_weighted_window = enabled
 
     def get_prediction_stats(self) -> Dict:
-        """Tahmin istatistiklerini getir - JSON safe"""
+        """Tahmin istatistiklerini getir"""
         return {
             "buffer_size": int(len(self.data_buffer)),
             "prediction_history_size": int(len(self.prediction_history)),
             "smoothing_factor": float(self.smoothing_factor),
             "window_size": int(self.window_size),
             "stable_count": int(self.stable_count),
-            "last_prediction": int(self.last_prediction) if self.last_prediction is not None else None
+            "last_prediction": int(self.last_prediction) if self.last_prediction is not None else None,
+            "change_detected_count": int(self.change_detected_count),
+            "use_weighted_window": bool(self.use_weighted_window)
         }
 
-    def reset_buffer(self):
+    def reset_buffer(self, hard_reset=False):
         """Buffer ve tahmin geçmişini temizle"""
         self.data_buffer.clear()
         self.prediction_history.clear()
         self.stable_count = 0
         self.last_prediction = None
+        self.change_detected_count = 0
+        
+        if hard_reset:
+            if self.model is not None:
+                self.model.reset_states() if hasattr(self.model, 'reset_states') else None
+                print("🔄 Model internal state temizlendi")
 
     def save_pipeline(self, filepath="pipeline"):
         if self.model is None:
@@ -230,7 +299,7 @@ class CNNLSTMPipeline:
             "stride": self.stride,
             "model_path": model_path,
             "smoothing_factor": self.smoothing_factor,
-            "transition_threshold": self.transition_threshold
+            "use_weighted_window": self.use_weighted_window
         }
         
         pickle_path = f"{filepath}.pkl"
@@ -256,7 +325,12 @@ class CNNLSTMPipeline:
         self.window_size = pipeline_data["window_size"]
         self.stride = pipeline_data["stride"]
         self.smoothing_factor = pipeline_data.get("smoothing_factor", 0.7)
-        self.transition_threshold = pipeline_data.get("transition_threshold", 0.3)
+        self.use_weighted_window = pipeline_data.get("use_weighted_window", True)
+        
+        if self.use_weighted_window:
+            self.window_weights = np.exp(np.linspace(-2, 0, self.window_size))
+            self.window_weights = self.window_weights / self.window_weights.sum()
         
         print(f"Model '{model_path}' yüklendi.")
         print(f"Pipeline '{pickle_path}' yüklendi.")
+        print(f"Weighted Window: {self.use_weighted_window}")
