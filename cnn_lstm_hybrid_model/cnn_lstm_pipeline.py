@@ -185,10 +185,7 @@ class CNNLSTMPipeline:
         window_data = np.array(self.data_buffer)
         window_data = window_data.reshape(1, self.window_size, 3)
 
-        # Weighted window prediction
         raw_prediction = self.predict_with_weighted_window(window_data)
-        
-        # Güçlü değişim var mı?
         strong_change = self.detect_strong_change()
         
         if strong_change:
@@ -211,42 +208,55 @@ class CNNLSTMPipeline:
         predicted_class = np.argmax(smoothed)
         confidence = float(np.max(smoothed))
         
-        # ✅ FİX: Stabilite kontrolünü ÖNCE yap
+        # ✅ YENİ: Hangi sınıftan hangi sınıfa geçiş yapılıyor kontrol et
+        current_posture_name = self.label_encoder.inverse_transform([predicted_class])[0] if predicted_class is not None else None
+        last_posture_name = self.label_encoder.inverse_transform([self.last_prediction])[0] if self.last_prediction is not None else None
+        
+        # ✅ YENİ: Kritik geçişler için threshold'u düşür
+        is_critical_transition = False
+        if last_posture_name and current_posture_name:
+            critical_transitions = [
+                ("normal", "slouch"),
+                ("normal", "hunch"),
+                ("slouch", "hunch"),
+                ("hunch", "slouch")
+            ]
+            if (last_posture_name, current_posture_name) in critical_transitions:
+                is_critical_transition = True
+                print(f"⚠️ Kritik geçiş: {last_posture_name} → {current_posture_name}")
+        
+        # Threshold'u dinamik ayarla
+        if is_critical_transition or strong_change:
+            required_confidence = 0.45  # Düşük threshold
+        else:
+            required_confidence = 0.55  # Normal threshold
+        
+        # Stabilite kontrolü
         is_different_prediction = (self.last_prediction is not None and 
                                 self.last_prediction != predicted_class)
         
         if is_different_prediction:
-            # Farklı tahmin geldi
-            if confidence > 0.55 or strong_change:  # 0.65 → 0.55 düşürdüm
-                # Yüksek güven veya strong change → Hemen geç
+            if confidence > required_confidence or strong_change:
                 self.stable_count = 1
                 self.last_prediction = predicted_class
-                print(f"⚡ Yeni tahmine geçiş: {confidence:.2f}")
+                print(f"⚡ Geçiş: {last_posture_name} → {current_posture_name} (güven: {confidence:.2f})")
             else:
-                # Düşük güven → Bekle
                 self.stable_count = 0
-                # ⚠️ last_prediction'ı DEĞİŞTİRME! Eski tahminde kal
         else:
-            # Aynı tahmin
             if self.last_prediction == predicted_class:
                 self.stable_count += 1
             else:
-                # İlk tahmin
                 self.last_prediction = predicted_class
                 self.stable_count = 1
         
-        # ✅ FİX: Final posture kararı - BASİTLEŞTİRİLDİ
-        if self.stable_count >= 1 and (confidence > 0.55 or strong_change):
-            # Yeni tahmin yeterince güçlü → Kullan
+        # Final posture
+        if self.stable_count >= 1 and confidence > required_confidence:
             final_posture = self.label_encoder.inverse_transform([predicted_class])[0]
         elif self.last_prediction is not None and not is_different_prediction:
-            # Aynı tahmin devam ediyor → Kullan
             final_posture = self.label_encoder.inverse_transform([predicted_class])[0]
         elif self.last_prediction is not None:
-            # Farklı tahmin ama yeterince güçlü değil → Eski tahminde kal
             final_posture = self.label_encoder.inverse_transform([self.last_prediction])[0]
         else:
-            # İlk tahmin
             final_posture = self.label_encoder.inverse_transform([predicted_class])[0]
         
         all_predictions = {
