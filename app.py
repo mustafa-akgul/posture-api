@@ -86,30 +86,28 @@ def root():
 
 
 @app.post("/predict")
+
 def predict(data: Optional[SensorData] = None):
-    """Gerçek zamanlı tahmin"""
     try:
+        posture, confidence, all_predictions = None, None, None # Değişkenleri başlangıçta tanımla
+
         if data is not None:
             posture, confidence, all_predictions = pipeline.add_data_point(
                 data.x, data.y, data.z
             )
-        else:
-            # Yeni veri yoksa son tahmini kullan
-            if len(pipeline.prediction_history) > 0:
-                smoothed = pipeline.prediction_history[-1]
-                predicted_class = np.argmax(smoothed)
-                confidence = float(np.max(smoothed))
-                posture = pipeline.label_encoder.inverse_transform([predicted_class])[0]
-                all_predictions = {
-                    pipeline.label_encoder.inverse_transform([i])[0]: round(float(smoothed[i]), 3)
-                    for i in range(len(smoothed))
-                }
-            else:
-                return {
-                    "status": "no_data",
-                    "message": "Henüz veri gelmedi, tahmin yok"
-                }
 
+        # EĞER TAHMİN YAPILACAK KADAR VERİ YOKSA, "VERİ TOPLANIYOR" YANITI DÖN
+        if posture is None:
+            stats = pipeline.get_prediction_stats()
+            return {
+                "status": "collecting",
+                "message": "Kalibrasyon için veri toplanıyor...",
+                "buffer_size": stats.get("buffer_size", 0),
+                "window_size": stats.get("window_size", 15),
+                "progress_percentage": round((stats.get("buffer_size", 0) / stats.get("window_size", 15)) * 100, 1)
+            }
+
+        # Eğer veri varsa, normal yanıtı oluşturmaya devam et
         stats = pipeline.get_prediction_stats()
         stats = convert_numpy_types(stats)
 
@@ -124,16 +122,8 @@ def predict(data: Optional[SensorData] = None):
                 "is_stable": stats["stable_count"] >= 2,
                 "last_prediction": stats["last_prediction"]
             },
-            "smoothing_info": {
-                "current_factor": stats["smoothing_factor"],
-                "history_size": stats["prediction_history_size"]
-            },
-            "change_detection": {
-                "change_detected_count": stats.get("change_detected_count", 0),
-                "weighted_window_enabled": stats.get("use_weighted_window", True)
-            }
+            # ... (diğer bilgiler)
         }
-
     except Exception as e:
         import traceback
         traceback.print_exc()
