@@ -200,14 +200,14 @@ class CNNLSTMPipeline:
         self.transition_threshold = max(0.0, min(1.0, threshold))
 
     def get_prediction_stats(self) -> Dict:
-        """Tahmin istatistiklerini getir"""
+        """Tahmin istatistiklerini getir - JSON safe"""
         return {
-            "buffer_size": len(self.data_buffer),
-            "prediction_history_size": len(self.prediction_history),
-            "smoothing_factor": self.smoothing_factor,
-            "window_size": self.window_size,
-            "stable_count": self.stable_count,
-            "last_prediction": self.last_prediction
+            "buffer_size": int(len(self.data_buffer)),
+            "prediction_history_size": int(len(self.prediction_history)),
+            "smoothing_factor": float(self.smoothing_factor),
+            "window_size": int(self.window_size),
+            "stable_count": int(self.stable_count),
+            "last_prediction": int(self.last_prediction) if self.last_prediction is not None else None
         }
 
     def reset_buffer(self):
