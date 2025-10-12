@@ -3,6 +3,9 @@ from pydantic import BaseModel
 import pandas as pd
 import numpy as np
 import uvicorn
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
 
 class SensorData(BaseModel):
     x: float
@@ -13,6 +16,19 @@ class SmoothingConfig(BaseModel):
     smoothing_factor: float
 
 app = FastAPI(title="Real-time Posture API")
+# allow each domains
+origins = [
+    "*",  # Geliştirme için serbest bırak
+    "https://posture-api-krqg.onrender.com",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Pipeline yükleme
 from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
@@ -22,6 +38,8 @@ try:
     pipeline.load_pipeline("pipeline")
     print("✅ Model yüklendi")
 except Exception as e:
+    if not os.path.exists("cnn_lstm_hybrid_model/datasets/new_dataset.csv"):
+        raise RuntimeError("Dataset dosyası bulunamadı. Model eğitilemedi.")
     print(f"⚠️ Model yüklenemedi: {e}")
     print("Yeniden eğitiliyor...")
     df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset.csv")
@@ -57,8 +75,8 @@ def predict(data: SensorData):
         return {
             "status": "ok",
             "posture": posture,
-            "confidence": round(confidence, 3),
-            "buffer_size": current_size,
+            "confidence": float(confidence),
+            "buffer_size": len(pipeline.data_buffer),
             "prediction_type": prediction_type,
             "all_predictions": all_predictions
         }
@@ -89,3 +107,4 @@ def reset_buffer():
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
+    

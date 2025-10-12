@@ -88,32 +88,6 @@ class CNNLSTMPipeline:
         
         return history
 
-    def predict_partial(self):
-        """Kısmi pencere ile tahmin yap (10+ veri varsa)"""
-        current_size = len(self.data_buffer)
-        if current_size < 10:
-            return None, None, None
-            
-        # Eksik kısmı son veriyle doldur
-        temp_buffer = list(self.data_buffer)
-        while len(temp_buffer) < self.window_size:
-            temp_buffer.append(temp_buffer[-1])
-        
-        window_data = np.array(temp_buffer)
-        window_data = window_data.reshape(1, self.window_size, 3)
-        
-        raw_prediction = self.model.predict(window_data, verbose=0)
-        predicted_class = np.argmax(raw_prediction[0])
-        confidence = float(raw_prediction[0][predicted_class]) * 0.6  # Kısmi güven
-        
-        posture = self.label_encoder.inverse_transform([predicted_class])[0]
-        
-        all_predictions = {
-            self.label_encoder.inverse_transform([i])[0]: round(float(raw_prediction[0][i]), 3)
-            for i in range(len(raw_prediction[0]))
-        }
-        
-        return posture, confidence, all_predictions
 
     def predict_full(self):
         """Tam pencere ile tahmin yap"""
@@ -153,9 +127,7 @@ class CNNLSTMPipeline:
         current_size = len(self.data_buffer)
         
         if current_size >= self.window_size:
-            return self.predict_full()
-        elif current_size >= 10:
-            return self.predict_partial()
+            return self.predict_full()   
         else:
             return None, None, None
 
