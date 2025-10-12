@@ -282,7 +282,6 @@ def get_config():
     return {
         "window_size": stats["window_size"],
         "smoothing_factor": stats["smoothing_factor"],
-        "available_classes": list(pipeline.label_encoder.classes_) if hasattr(pipeline.label_encoder, 'classes_') else [],
         "use_weighted_window": stats.get("use_weighted_window", True)
     }
 
