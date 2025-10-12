@@ -5,6 +5,7 @@ import numpy as np
 import uvicorn
 from fastapi.middleware.cors import CORSMiddleware
 import os
+from typing import Optional
 
 
 class SensorData(BaseModel):
@@ -49,19 +50,9 @@ app.add_middleware(
 from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 
 pipeline = CNNLSTMPipeline(window_size=15, use_weighted_window=True)
-try:
-    pipeline.load_pipeline("pipeline")
-    print("✅ Model yüklendi (v2.1 - Weighted Window)")
-except Exception as e:
-    if not os.path.exists("cnn_lstm_hybrid_model/datasets/new_dataset.csv"):
-        raise RuntimeError("Dataset dosyası bulunamadı.")
-    print(f"⚠️ Model yüklenemedi: {e}")
-    print("Yeniden eğitiliyor...")
-    df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset.csv")
-    pipeline.fit(df, epochs=30, batch_size=32)
-    pipeline.save_pipeline("pipeline")
-    print("✅ Model eğitildi ve kaydedildi")
 
+pipeline.load_pipeline("pipeline")
+print("✅ Model yüklendi (v2.1 - Weighted Window)")
 
 @app.get("/")
 def root():
@@ -83,31 +74,38 @@ def root():
 
 
 @app.post("/predict")
-def predict(data: SensorData):
+def predict(data: Optional[SensorData] = None):
     """Gerçek zamanlı tahmin"""
     try:
-        posture, confidence, all_predictions = pipeline.add_data_point(
-            data.x, data.y, data.z
-        )
-        
-        current_size = len(pipeline.data_buffer)
-        
-        if posture is None:
-            return {
-                "status": "collecting",
-                "message": f"Kalibrasyon ({current_size}/{pipeline.window_size})",
-                "buffer_size": current_size,
-                "progress_percentage": round((current_size / pipeline.window_size) * 100, 1)
-            }
-        
+        if data is not None:
+            posture, confidence, all_predictions = pipeline.add_data_point(
+                data.x, data.y, data.z
+            )
+        else:
+            # Yeni veri yoksa son tahmini kullan
+            if len(pipeline.prediction_history) > 0:
+                smoothed = pipeline.prediction_history[-1]
+                predicted_class = np.argmax(smoothed)
+                confidence = float(np.max(smoothed))
+                posture = pipeline.label_encoder.inverse_transform([predicted_class])[0]
+                all_predictions = {
+                    pipeline.label_encoder.inverse_transform([i])[0]: round(float(smoothed[i]), 3)
+                    for i in range(len(smoothed))
+                }
+            else:
+                return {
+                    "status": "no_data",
+                    "message": "Henüz veri gelmedi, tahmin yok"
+                }
+
         stats = pipeline.get_prediction_stats()
         stats = convert_numpy_types(stats)
-        
+
         return {
             "status": "ok",
             "posture": posture,
             "confidence": round(float(confidence), 3),
-            "buffer_size": current_size,
+            "buffer_size": len(pipeline.data_buffer),
             "all_predictions": all_predictions,
             "stability": {
                 "stable_count": stats["stable_count"],
@@ -123,13 +121,11 @@ def predict(data: SensorData):
                 "weighted_window_enabled": stats.get("use_weighted_window", True)
             }
         }
-        
+
     except Exception as e:
-        print(f"❌ Hata: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.post("/update_smoothing")
 def update_smoothing(config: SmoothingConfig):

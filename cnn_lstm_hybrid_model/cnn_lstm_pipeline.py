@@ -34,7 +34,7 @@ def build_cnn_lstm_model(window_size, n_features, n_classes):
         layers.MaxPooling1D(2),
         layers.LSTM(64, return_sequences=False),
         layers.Dense(32, activation='relu'),
-        layers.Dropout(0.3),
+        layers.Dropout(0.4),
         layers.Dense(n_classes, activation='softmax')
     ])
     
