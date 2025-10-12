@@ -51,8 +51,19 @@ from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 
 pipeline = CNNLSTMPipeline(window_size=15, use_weighted_window=True)
 
-pipeline.load_pipeline("pipeline")
-print("✅ Model yüklendi (v2.1 - Weighted Window)")
+try:
+    pipeline.load_pipeline("pipeline")
+    print("✅ Model yüklendi")
+except Exception as e:
+    print(f"Model yüklenemedi: {e}")
+    print("Yeniden eğitiliyor...")
+    print(f"⚠️ Model yüklenemedi: {e}")
+    df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset.csv")
+    pipeline.fit(df, epochs=30, batch_size=32)
+    pipeline.save_pipeline("pipeline")
+    print("Model eğitildi ve kaydedildi")
+    print("✅ Model eğitildi")
+
 
 @app.get("/")
 def root():
