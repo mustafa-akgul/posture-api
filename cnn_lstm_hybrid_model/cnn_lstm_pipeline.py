@@ -124,15 +124,16 @@ class CNNLSTMPipeline:
             np.var(last_segment, axis=0) - np.var(first_segment, axis=0)
         )
         
-        # Threshold
-        change_detected = (mean_change > 0.3) or (var_change > 0.15)
+        # ✅ FİX: Threshold düşürüldü
+        change_detected = (mean_change > 0.25) or (var_change > 0.12)  # 0.3→0.25, 0.15→0.12
         
         if change_detected:
             self.change_detected_count += 1
         else:
             self.change_detected_count = max(0, self.change_detected_count - 1)
         
-        return self.change_detected_count >= 2
+        # ✅ FİX: 1 kez yeterli (2 yerine)
+        return self.change_detected_count >= 1
 
     def predict_with_weighted_window(self, window_data):
         """Ağırlıklı pencere ile tahmin"""
@@ -142,30 +143,32 @@ class CNNLSTMPipeline:
         predictions = []
         weights = []
         
-        # 1. Tam pencere (ağırlık: 0.3)
+        # ✅ FİX: Ağırlıklar değişti [0.3→0.2, 0.5→0.5, 0.2→0.3]
+        
+        # 1. Tam pencere (ağırlık: 0.2) - AZALTILDI
         pred_full = self.model.predict(window_data, verbose=0)[0]
         predictions.append(pred_full)
-        weights.append(0.3)
+        weights.append(0.2)
         
-        # 2. Son 10 veri (ağırlık: 0.5)
+        # 2. Son 10 veri (ağırlık: 0.5) - AYNI
         if len(self.data_buffer) >= 10:
             recent_window = np.array(list(self.data_buffer)[-10:])
             padded = np.pad(recent_window, ((self.window_size - 10, 0), (0, 0)), 
-                          mode='edge')
+                        mode='edge')
             pred_recent = self.model.predict(padded.reshape(1, self.window_size, 3), 
                                             verbose=0)[0]
             predictions.append(pred_recent)
             weights.append(0.5)
         
-        # 3. Son 5 veri (ağırlık: 0.2)
+        # 3. Son 5 veri (ağırlık: 0.3) - ARTIRILDI
         if len(self.data_buffer) >= 5:
             latest_window = np.array(list(self.data_buffer)[-5:])
             padded = np.pad(latest_window, ((self.window_size - 5, 0), (0, 0)), 
-                          mode='edge')
+                        mode='edge')
             pred_latest = self.model.predict(padded.reshape(1, self.window_size, 3), 
                                             verbose=0)[0]
             predictions.append(pred_latest)
-            weights.append(0.2)
+            weights.append(0.3)
         
         # Ağırlıklı ortalama
         weights = np.array(weights)
@@ -199,7 +202,7 @@ class CNNLSTMPipeline:
             if len(self.prediction_history) > 0:
                 last_pred = self.prediction_history[-1]
                 smoothed = (effective_smoothing * raw_prediction + 
-                           (1 - effective_smoothing) * last_pred)
+                        (1 - effective_smoothing) * last_pred)
             else:
                 smoothed = raw_prediction
         
@@ -208,33 +211,50 @@ class CNNLSTMPipeline:
         predicted_class = np.argmax(smoothed)
         confidence = float(np.max(smoothed))
         
-        # Stabilite kontrolü
-        if self.last_prediction == predicted_class:
-            self.stable_count += 1
-        else:
-            if confidence > 0.65 or strong_change:
+        # ✅ FİX: Stabilite kontrolünü ÖNCE yap
+        is_different_prediction = (self.last_prediction is not None and 
+                                self.last_prediction != predicted_class)
+        
+        if is_different_prediction:
+            # Farklı tahmin geldi
+            if confidence > 0.55 or strong_change:  # 0.65 → 0.55 düşürdüm
+                # Yüksek güven veya strong change → Hemen geç
                 self.stable_count = 1
-                print(f"⚡ Yüksek güvenle geçiş: {confidence:.2f}")
+                self.last_prediction = predicted_class
+                print(f"⚡ Yeni tahmine geçiş: {confidence:.2f}")
             else:
+                # Düşük güven → Bekle
                 self.stable_count = 0
-        
-        self.last_prediction = predicted_class
-        
-        # Tahmin kararı
-        if confidence > 0.65 or self.stable_count >= 2:
-            posture = self.label_encoder.inverse_transform([predicted_class])[0]
+                # ⚠️ last_prediction'ı DEĞİŞTİRME! Eski tahminde kal
         else:
-            if self.last_prediction is not None:
-                posture = self.label_encoder.inverse_transform([self.last_prediction])[0]
+            # Aynı tahmin
+            if self.last_prediction == predicted_class:
+                self.stable_count += 1
             else:
-                posture = self.label_encoder.inverse_transform([predicted_class])[0]
+                # İlk tahmin
+                self.last_prediction = predicted_class
+                self.stable_count = 1
+        
+        # ✅ FİX: Final posture kararı - BASİTLEŞTİRİLDİ
+        if self.stable_count >= 1 and (confidence > 0.55 or strong_change):
+            # Yeni tahmin yeterince güçlü → Kullan
+            final_posture = self.label_encoder.inverse_transform([predicted_class])[0]
+        elif self.last_prediction is not None and not is_different_prediction:
+            # Aynı tahmin devam ediyor → Kullan
+            final_posture = self.label_encoder.inverse_transform([predicted_class])[0]
+        elif self.last_prediction is not None:
+            # Farklı tahmin ama yeterince güçlü değil → Eski tahminde kal
+            final_posture = self.label_encoder.inverse_transform([self.last_prediction])[0]
+        else:
+            # İlk tahmin
+            final_posture = self.label_encoder.inverse_transform([predicted_class])[0]
         
         all_predictions = {
             self.label_encoder.inverse_transform([i])[0]: round(float(smoothed[i]), 3)
             for i in range(len(smoothed))
         }
         
-        return posture, confidence, all_predictions
+        return final_posture, confidence, all_predictions
 
     def add_data_point(self, x, y, z):
         """Tek veri noktası ekle"""
