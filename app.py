@@ -49,7 +49,7 @@ app.add_middleware(
 
 from cnn_lstm_hybrid_model.cnn_lstm_pipeline import CNNLSTMPipeline
 
-pipeline = CNNLSTMPipeline(window_size=15, use_weighted_window=True)
+pipeline = CNNLSTMPipeline(window_size=12, use_weighted_window=True)
 
 try : 
     pipeline.load_pipeline("pipeline")
@@ -103,8 +103,8 @@ def predict(data: Optional[SensorData] = None):
                 "status": "collecting",
                 "message": "Kalibrasyon için veri toplanıyor...",
                 "buffer_size": stats.get("buffer_size", 0),
-                "window_size": stats.get("window_size", 15),
-                "progress_percentage": round((stats.get("buffer_size", 0) / stats.get("window_size", 15)) * 100, 1)
+                "window_size": stats.get("window_size", 12),
+                "progress_percentage": round((stats.get("buffer_size", 0) / stats.get("window_size", 12)) * 100, 1)
             }
 
         # Eğer veri varsa, normal yanıtı oluşturmaya devam et
@@ -200,7 +200,7 @@ def full_reset():
     
     try:
         del pipeline
-        pipeline = CNNLSTMPipeline(window_size=15, use_weighted_window=True)
+        pipeline = CNNLSTMPipeline(window_size=12, use_weighted_window=True)
         pipeline.load_pipeline("pipeline")
         
         stats = pipeline.get_prediction_stats()
@@ -287,4 +287,6 @@ def get_config():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
