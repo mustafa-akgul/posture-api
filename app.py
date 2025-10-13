@@ -59,7 +59,7 @@ except Exception as e:
         raise RuntimeError("Dataset dosyası bulunamadı. Model eğitilemedi.")
     print(f"⚠️ Model yüklenemedi: {e}")
     print("Yeniden eğitiliyor...")
-    df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset_y.csv")
+    df = pd.read_csv("cnn_lstm_hybrid_model/datasets/new_dataset.csv")
     pipeline.fit(df, epochs=30, batch_size=32)
     pipeline.save_pipeline("pipeline")
     print("✅ Model eğitildi ve kaydedildi")
@@ -142,7 +142,7 @@ def update_smoothing(config: SmoothingConfig):
     return {
         "status": "success", 
         "smoothing_factor": pipeline.smoothing_factor,
-        "description": f"{'Hızlı tepki' if config.smoothing_factor > 0.7 else 'Stabil tahmin'}"
+        "description": f"{'Hızlı tepki' if config.smoothing_factor > 0.3 else 'Stabil tahmin'}"
     }
 
 

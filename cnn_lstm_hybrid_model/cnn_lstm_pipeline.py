@@ -8,22 +8,21 @@ from collections import deque
 from typing import Dict, Optional
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.callbacks import EarlyStopping
-from scipy import stats
-import pandas as pd
+
 
 
 def get_raw_windows(df, window_size, stride):
     windows = []
     labels = []
     has_label = 'label' in df.columns
-    
+
     for start in range(0, len(df) - window_size + 1, stride):
         window = df.iloc[start:start + window_size][['x', 'y', 'z']].values
         windows.append(window)
         if has_label:
             label = df.iloc[start:start + window_size]['label'].mode()[0]
             labels.append(label)
-    
+
     if has_label:
         return np.array(windows), np.array(labels)
     else:
@@ -41,28 +40,28 @@ def build_cnn_lstm_model(window_size, n_features, n_classes):
         layers.Dropout(0.4),
         layers.Dense(n_classes, activation='softmax')
     ])
-    
+
     model.compile(
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy']
     )
-    
+
     return model
 
 
 class CNNLSTMPipeline:
-    
-    def __init__(self, window_size=12, stride=1, use_weighted_window=True, 
-                 normalize=True, auto_clean=True):
+
+    def __init__(self, window_size=15, stride=1, use_weighted_window=True):
+
         self.window_size = window_size
         self.stride = stride
         self.model = None
         self.label_encoder = LabelEncoder()
         self.data_buffer = deque(maxlen=window_size)
-        self.normalize = normalize
-        self.auto_clean = auto_clean
-        self.scaler = StandardScaler() if normalize else None
+        
+
+
         # Weighted window için ağırlıklar
         self.use_weighted_window = use_weighted_window
         if use_weighted_window:
@@ -70,122 +69,19 @@ class CNNLSTMPipeline:
             self.window_weights = self.window_weights / self.window_weights.sum()
         else:
             self.window_weights = np.ones(window_size) / window_size
-        
+
         # Adaptive smoothing
         self.prediction_history = deque(maxlen=3)
-        self.smoothing_factor = 0.7
-        
+        self.smoothing_factor = 0.4
+
         # Değişim tespiti
         self.last_prediction = None
         self.stable_count = 0
         self.change_detected_count = 0
 
-    def clean_outliers(self, df, z_threshold=3):
-        """Outlier temizleme"""
-        if not self.auto_clean:
-            return df
-        
-        df_clean = df.copy()
-        for column in ['x', 'y', 'z']:
-            z_scores = np.abs(stats.zscore(df_clean[column]))
-            df_clean = df_clean[z_scores < z_threshold]
-        
-        print(f"Outlier temizleme: {len(df)} -> {len(df_clean)} veri")
-        return df_clean.reset_index(drop=True)
-
-    def remove_sudden_jumps(self, df, threshold=2.0):
-        """Ani sıçramaları temizleme"""
-        if not self.auto_clean:
-            return df
-        
-        df_clean = df.copy()
-        for column in ['x', 'y', 'z']:
-            diff = np.abs(df_clean[column].diff())
-            df_clean = df_clean[diff < threshold]
-        
-        print(f"Ani sıçrama temizleme: {len(df)} -> {len(df_clean)} veri")
-        return df_clean.reset_index(drop=True)
-
-    def augment_data(self, X, y, noise_factor=0.05):
-        """Data augmentation - noise ekleme"""
-        if len(X) == 0:
-            return X, y
-        
-        X_augmented = []
-        y_augmented = []
-        
-        # Orijinal veriyi ekle
-        X_augmented.extend(X)
-        y_augmented.extend(y)
-        
-        # Gürültülü versiyonlar oluştur
-        for i in range(len(X)):
-            noise = np.random.normal(0, noise_factor, X[i].shape)
-            X_noisy = X[i] + noise
-            X_augmented.append(X_noisy)
-            y_augmented.append(y[i])
-        
-        return np.array(X_augmented), np.array(y_augmented)
-
-    def apply_smote(self, X, y):
-        """SMOTE uygulama (basit implementasyon)"""
-        from sklearn.utils import resample
-        
-        if len(X) == 0:
-            return X, y
-        
-        # Sınıf dağılımını bul
-        unique_classes, class_counts = np.unique(y, return_counts=True)
-        max_count = np.max(class_counts)
-        
-        X_resampled = []
-        y_resampled = []
-        
-        for class_label in unique_classes:
-            class_indices = np.where(y == class_label)[0]
-            X_class = X[class_indices]
-            y_class = y[class_indices]
-            
-            # Eksik sınıfları resample et
-            if len(X_class) < max_count:
-                X_upsampled = resample(X_class, 
-                                     replace=True, 
-                                     n_samples=max_count, 
-                                     random_state=42)
-                y_upsampled = np.full(max_count, class_label)
-            else:
-                X_upsampled = X_class
-                y_upsampled = y_class
-            
-            X_resampled.extend(X_upsampled)
-            y_resampled.extend(y_upsampled)
-        
-        return np.array(X_resampled), np.array(y_resampled)
-
-    def _print_validation_metrics(self, X, y):
-        """Validation metriklerini yazdır"""
-        if self.model is None:
-            return
-        
-        from sklearn.metrics import classification_report, confusion_matrix
-        from sklearn.model_selection import train_test_split
-        
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-        # Validation accuracy
-        val_loss, val_accuracy = self.model.evaluate(X_val, y_val, verbose=0)
-        print(f"✅ Validation Accuracy: {val_accuracy:.4f}")
-        print(f"✅ Validation Loss: {val_loss:.4f}")
-        
-        # Detaylı rapor
-        y_pred = np.argmax(self.model.predict(X_val), axis=1)
-        print("\n📊 Classification Report:")
-        print(classification_report(y_val, y_pred, 
-                                  target_names=self.label_encoder.classes_))
-        
     def prepare_data(self, df, fit_encoder=False):
         X, y = get_raw_windows(df, self.window_size, self.stride)
-        
+
         if y is not None:
             if fit_encoder:
                 y_encoded = self.label_encoder.fit_transform(y)
@@ -296,7 +192,7 @@ class CNNLSTMPipeline:
         # 1. Tam pencere (ağırlık: 0.2) - AZALTILDI
         pred_full = self.model.predict(window_data, verbose=0)[0]
         predictions.append(pred_full)
-        weights.append(0.2)
+        weights.append(0.1)
         
         # 2. Son 10 veri (ağırlık: 0.5) - AYNI
         if len(self.data_buffer) >= 10:
@@ -316,7 +212,7 @@ class CNNLSTMPipeline:
             pred_latest = self.model.predict(padded.reshape(1, self.window_size, 3), 
                                             verbose=0)[0]
             predictions.append(pred_latest)
-            weights.append(0.3)
+            weights.append(0.4)
         
         # Ağırlıklı ortalama
         weights = np.array(weights)
@@ -375,9 +271,9 @@ class CNNLSTMPipeline:
         
         # Threshold'u dinamik ayarla
         if is_critical_transition or strong_change:
-            required_confidence = 0.45  # Düşük threshold
+            required_confidence = 0.35  # Düşük threshold
         else:
-            required_confidence = 0.55  # Normal threshold
+            required_confidence = 0.40  # Normal threshold
         
         # Stabilite kontrolü
         is_different_prediction = (self.last_prediction is not None and 
