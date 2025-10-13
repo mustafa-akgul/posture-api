@@ -7,7 +7,6 @@ import joblib
 from collections import deque
 from typing import Dict, Optional
 from sklearn.preprocessing import StandardScaler
-from tensorflow.keras.callbacks import EarlyStopping
 
 
 
@@ -91,58 +90,20 @@ class CNNLSTMPipeline:
         else:
             return X, None
 
-    def fit(self, df, epochs=30, batch_size=32, 
-            use_class_weights=True,
-            use_augmentation=True,
-            use_smote=False):
-        
-        # 1. Veri temizleme
-        if self.auto_clean:
-            df = self.clean_outliers(df)
-            df = self.remove_sudden_jumps(df)
-        
-        # 2. Normalizasyon
-        if self.normalize:
-            self.scaler.fit(df[['x', 'y', 'z']])
-            df[['x', 'y', 'z']] = self.scaler.transform(df[['x', 'y', 'z']])
-        
-        # 3. Pencere oluşturma
+    def fit(self, df, epochs=20, batch_size=32):
+
         X, y = self.prepare_data(df, fit_encoder=True)
-        
-        # 4. Noise augmentation
-        if use_augmentation:
-            X, y = self.augment_data(X, y)
-        
-        # 5. SMOTE
-        if use_smote:
-            X, y = self.apply_smote(X, y)
-        
-        # 6. Class weights
-        class_weights = None
-        if use_class_weights:
-            from sklearn.utils.class_weight import compute_class_weight
-            classes = np.unique(y)
-            weights = compute_class_weight('balanced', classes=classes, y=y)
-            class_weights = dict(enumerate(weights))
-        
-        # 7. Model eğitimi
-        self.model = build_cnn_lstm_model(self.window_size, X.shape[2], len(np.unique(y)))
-        
+        n_classes = len(np.unique(y))
+
+        self.model = build_cnn_lstm_model(self.window_size, X.shape[2], n_classes)
+
         history = self.model.fit(
             X, y,
             epochs=epochs,
             batch_size=batch_size,
             validation_split=0.2,
-            class_weight=class_weights,
-            callbacks=[
-                EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
-            ],
             verbose=1
         )
-        
-        # 8. Validation metrikleri
-        self._print_validation_metrics(X, y)
-        
         return history
 
     def detect_strong_change(self):
